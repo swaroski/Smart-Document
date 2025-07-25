@@ -7,7 +7,7 @@ from typing import List, Dict
 import numpy as np
 import faiss
 import PyPDF2
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -15,26 +15,27 @@ load_dotenv()
 
 # Configuration - try Streamlit secrets first, then environment variables
 try:
-    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-    EMBEDDING_MODEL = st.secrets.get("EMBEDDING_MODEL", "text-embedding-3-small")
-    CHAT_MODEL = st.secrets.get("CHAT_MODEL", "gpt-4o-mini")
+    GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    EMBEDDING_MODEL = st.secrets.get("EMBEDDING_MODEL", "gemini-embedding-001")
+    CHAT_MODEL = st.secrets.get("CHAT_MODEL", "gemini-1.5-flash")
     CHUNK_SIZE = int(st.secrets.get("CHUNK_SIZE", "500"))
     CHUNK_OVERLAP = int(st.secrets.get("CHUNK_OVERLAP", "50"))
     TOP_K = int(st.secrets.get("TOP_K", "5"))
 except:
     # Fallback to environment variables if secrets not available
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-    CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+    CHAT_MODEL = os.getenv("CHAT_MODEL", "gemini-1.5-flash")
     CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
     CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
     TOP_K = int(os.getenv("TOP_K", "5"))
 
-# Initialize OpenAI client
-if OPENAI_API_KEY:
-    client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize Google AI client
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+    client_configured = True
 else:
-    client = None
+    client_configured = False
 
 # Page config
 st.set_page_config(
@@ -53,25 +54,28 @@ class SimpleVectorStore:
     def __init__(self):
         self.index = None
         self.chunks = []
-        self.dimension = 1536
+        self.dimension = 768  # gemini-embedding-001 dimension
     
     def add_documents(self, chunks: List[Dict[str, str]]):
         if not chunks:
             return
         
-        if not client:
-            st.error("OpenAI API key not found. Please set OPENAI_API_KEY in your environment.")
+        if not client_configured:
+            st.error("Google API key not found. Please set GOOGLE_API_KEY in your environment.")
             return
             
         # Get embeddings
         texts = [chunk['text'] for chunk in chunks]
         
         try:
-            response = client.embeddings.create(
-                model=EMBEDDING_MODEL,
-                input=texts
-            )
-            embeddings = [data.embedding for data in response.data]
+            embeddings = []
+            for text in texts:
+                result = genai.embed_content(
+                    model=EMBEDDING_MODEL,
+                    content=text,
+                    task_type="retrieval_document"
+                )
+                embeddings.append(result['embedding'])
         except Exception as e:
             st.error(f"Error getting embeddings: {str(e)}")
             return
@@ -92,16 +96,17 @@ class SimpleVectorStore:
         if self.index is None or len(self.chunks) == 0:
             return []
         
-        if not client:
+        if not client_configured:
             return []
         
         try:
             # Get query embedding
-            response = client.embeddings.create(
+            result = genai.embed_content(
                 model=EMBEDDING_MODEL,
-                input=[query]
+                content=query,
+                task_type="retrieval_query"
             )
-            query_embedding = response.data[0].embedding
+            query_embedding = result['embedding']
             
             query_vector = np.array([query_embedding], dtype=np.float32)
             faiss.normalize_L2(query_vector)
@@ -190,32 +195,27 @@ def process_file(filename: str, file_content: bytes) -> List[Dict[str, str]]:
     return chunks
 
 def ask_question(question: str, context_chunks: List[str]) -> str:
-    if not client:
-        return "OpenAI API key not configured."
+    if not client_configured:
+        return "Google API key not configured."
     
     if not context_chunks:
         return "No relevant context found to answer the question."
     
     context = "\n\n".join(context_chunks)
     
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a helpful assistant that answers questions based only on the provided context. If the answer cannot be found in the context, say so."
-        },
-        {
-            "role": "user",
-            "content": f"Context:\n{context}\n\nQuestion: {question}"
-        }
-    ]
+    prompt = f"""You are a helpful assistant that answers questions based only on the provided context. If the answer cannot be found in the context, say so.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
     
     try:
-        response = client.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=messages,
-            temperature=0.1
-        )
-        return response.choices[0].message.content
+        model = genai.GenerativeModel(CHAT_MODEL)
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
         return f"Error getting answer: {str(e)}"
 
@@ -223,12 +223,12 @@ def main():
     st.title("📚 Smart Document Search")
     
     # Check API key
-    if not OPENAI_API_KEY:
-        st.error("🔴 OpenAI API key not found. Please set OPENAI_API_KEY in your environment variables.")
-        st.info("Create a `.env` file with: `OPENAI_API_KEY=your_api_key_here`")
+    if not GOOGLE_API_KEY:
+        st.error("🔴 Google API key not found. Please set GOOGLE_API_KEY in your environment variables.")
+        st.info("Create a `.env` file with: `GOOGLE_API_KEY=your_api_key_here`")
         return
     
-    st.success("🟢 OpenAI API key loaded")
+    st.success("🟢 Google AI API key loaded")
     
     # Initialize vector store
     if st.session_state.vector_store is None:
