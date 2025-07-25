@@ -13,13 +13,22 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
-TOP_K = int(os.getenv("TOP_K", "5"))
+# Configuration - try Streamlit secrets first, then environment variables
+try:
+    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    EMBEDDING_MODEL = st.secrets.get("EMBEDDING_MODEL", "text-embedding-3-small")
+    CHAT_MODEL = st.secrets.get("CHAT_MODEL", "gpt-4o-mini")
+    CHUNK_SIZE = int(st.secrets.get("CHUNK_SIZE", "500"))
+    CHUNK_OVERLAP = int(st.secrets.get("CHUNK_OVERLAP", "50"))
+    TOP_K = int(st.secrets.get("TOP_K", "5"))
+except:
+    # Fallback to environment variables if secrets not available
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+    CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
+    CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
+    TOP_K = int(os.getenv("TOP_K", "5"))
 
 # Initialize OpenAI client
 if OPENAI_API_KEY:

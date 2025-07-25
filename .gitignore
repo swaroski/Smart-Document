@@ -143,7 +143,7 @@ faiss_index/
 *.pkl
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
 
 # Temporary files
 *.tmp
