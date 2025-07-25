@@ -54,7 +54,7 @@ class SimpleVectorStore:
     def __init__(self):
         self.index = None
         self.chunks = []
-        self.dimension = 768  # gemini-embedding-001 dimension
+        self.dimension = None  # Will be set dynamically based on first embedding
     
     def add_documents(self, chunks: List[Dict[str, str]]):
         if not chunks:
@@ -79,6 +79,10 @@ class SimpleVectorStore:
         except Exception as e:
             st.error(f"Error getting embeddings: {str(e)}")
             return
+        
+        # Set dimension from first embedding if not set
+        if self.dimension is None:
+            self.dimension = len(embeddings[0])
         
         # Initialize or update index
         if self.index is None:
